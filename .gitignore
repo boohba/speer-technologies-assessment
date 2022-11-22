@@ -1,0 +1,12 @@
+*
+!.gitignore
+!Cargo.lock
+!Cargo.toml
+!docker-compose.yml
+!Dockerfile
+!README.md
+!*/
+!/src/**
+!/tls/**
+!/tests/**
+!/migrations/**

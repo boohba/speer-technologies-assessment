@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+  flyway:
+    image: flyway/flyway:latest-alpine
+    volumes:
+      - ./migrations:/flyway/sql
+    depends_on:
+      - "postgres"
+    command: -url=jdbc:postgresql://postgres/postgres -connectRetries=60 -user=postgres -password=postgres  migrate
+  social-media-app:
+    build: .
+    ports:
+      - "8443:8443"
+    depends_on:
+      - "flyway"
+    environment:
+      - RUST_LOG=info
+      - DATABASE_ADDRESS=postgres://postgres:postgres@postgres/postgres
