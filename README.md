@@ -11,25 +11,24 @@ docker compose up
 
 Every response will contain the following JSON object:
 
-| Field   | Type              | Optional | Description                                                          |
-|---------|-------------------|-------|----------------------------------------------------------------------|
-| error   | boolean           | no    | Indicates whether the request failed.                                |
-| message | string            | yes   | The error description. Always present in case of an error.           |
-| result  | endpoint specific | yes   | The result of an operation. |
+| Field   | Type              | Optional | Description                                                |
+|---------|-------------------|-------|------------------------------------------------------------|
+| error   | boolean           | no    | Indicates whether the request has failed.                  |
+| message | string            | yes   | The error description. Always present in case of an error. |
+| result  | endpoint specific | yes   | The result of an operation.                                |
 
-## PUT /users
+## POST /users
 
-Create a user with a unique username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
+Create a user with a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
 
 The `result` field is always null.
 
 ### Examples
 
 ```bash
-curl --http2 -k -X PUT 'https://localhost:8443/users' \
-  -H 'Content-Type: application/x-www-form-urlencoded' \
-  -d 'username=hello' \
-  -d 'password=world'
+curl --http2 -k -X POST 'https://localhost:8443/users' \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"hello","password":"world"}'
 ```
 
 **201 Created**

@@ -167,7 +167,7 @@ async fn handle_request(mut request: Request, mut respond: Respond, database: Da
 
     let result = match request.uri().path() {
         "/users" => match *request.method() {
-            http::Method::PUT => call!(routes::users::put),
+            http::Method::POST => call!(routes::users::post),
             _ => error!(METHOD_NOT_ALLOWED),
         },
         _ => error!(NOT_FOUND),
@@ -222,7 +222,7 @@ macro_rules! check_content_type {
 
 #[macro_export]
 macro_rules! body {
-    ($request:ident, $respond:ident, $de:ident, $type:ty) => {{
+    ($request:ident, $respond:ident, $type:ty) => {{
         // the payload must be small enough to fit in one frame (don't do that in production)
         let body = match $request.body_mut().data().await {
             Some(body) => body?,
@@ -235,7 +235,7 @@ macro_rules! body {
             }
         };
 
-        match $de::from_bytes::<$type>(&body) {
+        match serde_json::from_slice::<$type>(&body) {
             Ok(body) => body,
             Err(_) => {
                 send_response!(

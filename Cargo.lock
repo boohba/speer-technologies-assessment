@@ -49,7 +49,6 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
- "serde_urlencoded",
  "sqlx",
  "tokio",
  "tokio-rustls",

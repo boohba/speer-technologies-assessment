@@ -1,26 +1,19 @@
-pub async fn put(
-    request: &mut crate::Request,
-    respond: &mut crate::Respond,
-    database: crate::Database,
+use crate::prelude::*;
+use argon2::password_hash::rand_core::OsRng;
+use argon2::password_hash::SaltString;
+use argon2::PasswordHasher;
+use sqlx::Row;
+
+pub async fn post(
+    request: &mut Request,
+    respond: &mut Respond,
+    database: Database,
 ) -> Result<(), h2::Error> {
-    use crate::*;
+    check_content_type!(request, respond, "application/json");
 
-    check_content_type!(request, respond, "application/x-www-form-urlencoded");
+    let credentials = body!(request, respond, Credentials);
 
-    #[derive(serde::Deserialize)]
-    struct Body {
-        username: String,
-        password: String,
-    }
-
-    let body = body!(request, respond, serde_urlencoded, Body);
-
-    // reasonable restrictions
-    if body.username.len() < 3
-        || body.username.len() > 32
-        || body.password.len() < 3
-        || body.password.len() > 128
-    {
+    if credentials.is_invalid() {
         send_response!(
             respond,
             BAD_REQUEST,
@@ -30,16 +23,12 @@ pub async fn put(
 
     let result =
         sqlx::query("INSERT INTO users (username) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id")
-            .bind(body.username)
+            .bind(credentials.username)
             .fetch_one(&database)
             .await;
 
     let user_id: i64 = match result {
-        Ok(row) => {
-            use sqlx::Row;
-
-            row.get_unchecked(0)
-        }
+        Ok(row) => row.get_unchecked(0),
         Err(e) => {
             // postgres will not return user id in case of a conflict
             if matches!(e, sqlx::error::Error::RowNotFound) {
@@ -60,17 +49,13 @@ pub async fn put(
         }
     };
 
-    use argon2::PasswordHasher;
+    let salt = SaltString::generate(&mut OsRng);
+    let password = credentials.password.as_bytes();
 
     // in production i would prefer to either avoid password-based auth at all or to
     // outsource it to some cloud service (like auth0 or Cognito)
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-    let argon2 = argon2::Argon2::default();
-    let random = &mut argon2::password_hash::rand_core::OsRng;
-    let salt = argon2::password_hash::SaltString::generate(random);
-    let result = argon2.hash_password(body.password.as_bytes(), &salt);
-
-    let password_hash = match result {
+    let password_hash = match ARGON2.hash_password(password, &salt) {
         Ok(password_hash) => password_hash.to_string(),
         // the username is already reserved at this point, so it should be cleaned up in
         // case of an error, but for the sake of simplicity we will not do that.

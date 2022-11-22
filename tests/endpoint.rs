@@ -46,7 +46,7 @@ async fn test_404() {
 
     const URL: &str = "https://localhost:8443";
 
-    test!(get,URL,NOT_FOUND,r#"{"error":true,"message":"Not Found"}"#,"");
+    test!(get, URL, NOT_FOUND,r#"{"error":true,"message":"Not Found"}"#, "");
 }
 
 async fn test_users() {
@@ -54,12 +54,12 @@ async fn test_users() {
 
     const URL: &str = "https://localhost:8443/users";
 
-    test!(get,URL,METHOD_NOT_ALLOWED,r#"{"error":true,"message":"Method Not Allowed"}"#,"");
-    test!(put,URL,BAD_REQUEST,r#"{"error":true,"message":"Content-Type is not set"}"#,"");
-    test!(put, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/json");
-    test!(put, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, "aaa", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(put, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, "username=a&password=a", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(put, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, "username=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&password=aaa", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(put, URL, CREATED, r#"{"error":false}"#, "username=hello&password=world", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(put, URL, CONFLICT, r#"{"error":true,"message":"Username already exists"}"#, "username=hello&password=world", CONTENT_TYPE: "application/x-www-form-urlencoded");
+    test!(get, URL, METHOD_NOT_ALLOWED, r#"{"error":true,"message":"Method Not Allowed"}"#, "");
+    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Content-Type is not set"}"#, "");
+    test!(post, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
+    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, "aaa", CONTENT_TYPE: "application/json");
+    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, r#"{"username":"aa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
+    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, r#"{"username":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
+    test!(post, URL, CREATED, r#"{"error":false}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
+    test!(post, URL, CONFLICT, r#"{"error":true,"message":"Username already exists"}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
 }
