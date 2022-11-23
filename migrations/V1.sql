@@ -17,3 +17,11 @@ CREATE TABLE sessions
 --
 --  Security™
 );
+
+CREATE TABLE tweets
+(
+    id           BIGINT    NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    user_id      BIGINT    NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    text         TEXT,
+    time_created BIGINT    NOT NULL DEFAULT extract(EPOCH FROM now())
+);

@@ -89,6 +89,160 @@ curl --http2 -k -X POST 'https://localhost:8443/sessions' \
 }
 ```
 
+## POST /tweets
+
+**Requires authorization*
+
+| Field    | Type              | Required | Description                                                                       |
+|----------|-------------------|----------|-----------------------------------------------------------------------------------|
+| text     | string            | yes      | The tweet content. It's length must be between 1 and 4096 characters (inclusive). |
+
+On success, the `result` field will contain a `number` tweet ID.
+
+### Examples
+
+```bash
+curl --http2 -k -X POST 'https://localhost:8443/tweets' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: your_token' \
+  -d '{"text":"a"}'
+```
+
+**201 Created**
+
+```json
+{
+  "error": false,
+  "result": 1
+}
+```
+
+**401 Unauthorized**
+
+```json
+{
+  "error": true,
+  "message": "Unauthorized"
+}
+```
+
+## GET /tweets
+
+**Requires authorization*
+
+#### Optional query parameters
+
+| Name   | Type   | Description                                                                  |
+|--------|--------|------------------------------------------------------------------------------|
+| limit  | number | The maximum number of tweets to return. The default and maximum value is 50. |
+| offset | number | The number of tweets to skip. The default value is 0.                        |
+
+On success, the `result` field will contain an array of tweets.
+
+### Examples
+
+```bash
+curl --http2 -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
+  -H 'Authorization: your_token'
+```
+
+**200 OK**
+
+```json
+{
+  "error": false,
+  "result": [
+    {
+      "id": 1,
+      "text": "Hello, World!",
+      "time_created": 1669185715
+    }
+  ]
+}
+```
+
+**401 Unauthorized**
+
+```json
+{
+  "error": true,
+  "message": "Unauthorized"
+}
+```
+
+## PATCH /tweets
+
+**Requires authorization*
+
+| Field | Type   | Required | Description                                                                       |
+|-------|--------|----------|-----------------------------------------------------------------------------------|
+| id    | number | yes      | The tweet ID.                                                                     |
+| text  | string | yes      | The tweet content. It's length must be between 1 and 4096 characters (inclusive). |
+
+The `result` field is always `null`.
+
+### Examples
+
+```bash
+curl --http2 -k -X PATCH 'https://localhost:8443/tweets' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: your_token' \
+  -d '{"id":1,"text":"Hello, World!"}'
+```
+
+**200 OK**
+
+```json
+{
+  "error": false
+}
+```
+
+**401 Unauthorized**
+
+```json
+{
+  "error": true,
+  "message": "Unauthorized"
+}
+```
+
+## DELETE /tweets
+
+**Requires authorization*
+
+| Field | Type   | Required | Description                                                                       |
+|-------|--------|----------|-----------------------------------------------------------------------------------|
+| id    | number | yes      | The tweet ID.                                                                     |
+
+The `result` field is always `null`.
+
+### Examples
+
+```bash
+curl --http2 -k -X DELETE 'https://localhost:8443/tweets' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: your_token' \
+  -d '{"id":1}'
+```
+
+**200 OK**
+
+```json
+{
+  "error": false
+}
+```
+
+**401 Unauthorized**
+
+```json
+{
+  "error": true,
+  "message": "Unauthorized"
+}
+```
+
 # Running endpoint tests
 
 1. Start the PostgreSQL instance

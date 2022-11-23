@@ -128,6 +128,15 @@ impl<T: serde::Serialize> Response<T> {
 
 impl Response<()> {
     #[inline(always)]
+    pub fn empty() -> Self {
+        Response {
+            error: false,
+            message: None,
+            result: None,
+        }
+    }
+
+    #[inline(always)]
     pub fn failure(message: &'static str) -> Self {
         Response::<()> {
             error: true,
@@ -175,6 +184,13 @@ async fn handle_request(mut request: Request, mut respond: Respond, database: Da
         },
         "/sessions" => match *request.method() {
             http::Method::POST => call!(routes::sessions::post),
+            _ => error!(METHOD_NOT_ALLOWED),
+        },
+        "/tweets" => match *request.method() {
+            http::Method::GET => call!(routes::tweets::get),
+            http::Method::POST => call!(routes::tweets::post),
+            http::Method::PATCH => call!(routes::tweets::patch),
+            http::Method::DELETE => call!(routes::tweets::delete),
             _ => error!(METHOD_NOT_ALLOWED),
         },
         _ => error!(NOT_FOUND),
@@ -271,4 +287,52 @@ macro_rules! unwrap_internal_error {
             }
         }
     };
+}
+
+#[macro_export]
+macro_rules! check_auth_token {
+    ($request:ident, $respond:ident) => {{
+        let token = match $request.headers().get(http::header::AUTHORIZATION) {
+            Some(token) => match base64::decode(token.as_bytes()) {
+                Ok(token) => {
+                    if token.len() != 40 {
+                        send_response!(
+                            $respond,
+                            BAD_REQUEST,
+                            Response::failure("Invalid request payload")
+                        );
+                    }
+
+                    token
+                }
+                Err(_) => {
+                    send_response!(
+                        $respond,
+                        BAD_REQUEST,
+                        Response::failure("Invalid request payload")
+                    );
+                }
+            },
+            None => {
+                send_response!($respond, UNAUTHORIZED, Response::failure("Unauthorized"));
+            }
+        };
+
+        let (session_id, s1) = token.split_at(8);
+
+        let s2 = signature!(session_id);
+
+        // verify signature
+        for index in 0..32 {
+            if s1[index] != s2[index] {
+                send_response!($respond, UNAUTHORIZED, Response::failure("Unauthorized"));
+            }
+        }
+
+        let mut buff = [0u8; 8];
+
+        unsafe { std::ptr::copy_nonoverlapping(session_id.as_ptr(), buff.as_mut_ptr(), 8) }
+
+        i64::from_le_bytes(buff)
+    }};
 }
