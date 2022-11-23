@@ -17,6 +17,8 @@ Every response will contain the following JSON object:
 | message | string            | yes   | The error description. Always present in case of an error. |
 | result  | endpoint specific | yes   | The result of an operation.                                |
 
+Most endpoints will require you to send an `Authorization` header containing the authorization token. You obtain it via the `POST /sessions` endpoint.
+
 ## POST /users
 
 Create a user using a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
