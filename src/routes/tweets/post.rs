@@ -5,7 +5,7 @@ pub async fn post(
     respond: &mut Respond,
     database: Database,
 ) -> Result<(), h2::Error> {
-    check_content_type!(request, respond, "application/json");
+    check_content_type!(request, respond);
 
     let session_id = check_auth_token!(request, respond);
 
