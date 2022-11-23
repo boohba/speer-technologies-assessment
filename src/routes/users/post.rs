@@ -27,27 +27,13 @@ pub async fn post(
             .fetch_optional(&database)
             .await;
 
-    let user_id: i64 = match result {
-        Ok(row) => {
-            // postgres will not return user id in case of a conflict
-            match row {
-                Some(row) => row.get_unchecked(0),
-                None => {
-                    send_response!(
-                        respond,
-                        CONFLICT,
-                        Response::failure("Username already exists")
-                    );
-                }
-            }
-        }
-        Err(e) => {
-            log::error!("{:?}", e);
-
+    let user_id = match unwrap_internal_error!(respond, result) {
+        Some(row) => row.get_unchecked::<i64, _>(0),
+        None => {
             send_response!(
                 respond,
-                INTERNAL_SERVER_ERROR,
-                Response::failure("Internal Server Error")
+                CONFLICT,
+                Response::failure("Username already exists")
             );
         }
     };
@@ -58,20 +44,8 @@ pub async fn post(
     // in production i would prefer to either avoid password-based auth at all or to
     // outsource it to some cloud service (like auth0 or Cognito)
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-    let password_hash = match ARGON2.hash_password(password, &salt) {
-        Ok(password_hash) => password_hash.to_string(),
-        // the username is already reserved at this point, so it should be cleaned up in
-        // case of an error, but for the sake of simplicity we will not do that.
-        Err(e) => {
-            log::error!("{:?}", e);
-
-            send_response!(
-                respond,
-                INTERNAL_SERVER_ERROR,
-                Response::failure("Internal Server Error")
-            );
-        }
-    };
+    let password_hash =
+        unwrap_internal_error!(respond, ARGON2.hash_password(password, &salt)).to_string();
 
     let result = sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
         .bind(password_hash)
@@ -79,8 +53,8 @@ pub async fn post(
         .execute(&database)
         .await;
 
-    // once again, the username is already reserved, so in case of an error it must be
-    // cleaned up, but the clock is ticking, so i will not implement that.
+    // the username is already reserved at this point, so it should be cleaned up in
+    // case of an error, but for the sake of simplicity we will not do that.
     if let Err(e) = result {
         log::error!("{:?}", e);
 

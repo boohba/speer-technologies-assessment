@@ -255,3 +255,21 @@ macro_rules! body {
         }
     }};
 }
+
+#[macro_export]
+macro_rules! unwrap_internal_error {
+    ($respond:ident, $result:expr) => {
+        match $result {
+            Ok(value) => value,
+            Err(e) => {
+                log::error!("{:?}", e);
+
+                send_response!(
+                    $respond,
+                    INTERNAL_SERVER_ERROR,
+                    Response::failure("Internal Server Error")
+                );
+            }
+        }
+    };
+}

@@ -26,25 +26,14 @@ pub async fn post(
         .fetch_optional(&database)
         .await;
 
-    let row = match result {
-        Ok(row) => match row {
-            Some(row) => row,
-            None => {
-                send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
-            }
-        },
-        Err(e) => {
-            log::error!("{:?}", e);
-
-            send_response!(
-                respond,
-                INTERNAL_SERVER_ERROR,
-                Response::failure("Internal Server Error")
-            );
+    let row = match unwrap_internal_error!(respond, result) {
+        Some(row) => row,
+        None => {
+            send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
         }
     };
 
-    // password_hash might not be initialized yet
+    // password_hash might not be initialized yet, see routes::users::post
     let password_hash = match row.get_unchecked::<Option<String>, _>(1) {
         Some(password_hash) => password_hash,
         None => {
@@ -52,18 +41,7 @@ pub async fn post(
         }
     };
 
-    let password_hash = match PasswordHash::new(&password_hash) {
-        Ok(password_hash) => password_hash,
-        Err(e) => {
-            log::error!("{:?}", e);
-
-            send_response!(
-                respond,
-                INTERNAL_SERVER_ERROR,
-                Response::failure("Internal Server Error")
-            );
-        }
-    };
+    let password_hash = unwrap_internal_error!(respond, PasswordHash::new(&password_hash));
 
     if let Err(_) = ARGON2.verify_password(credentials.password.as_bytes(), &password_hash) {
         send_response!(respond, UNAUTHORIZED, Response::failure("Unauthorized"));
@@ -74,18 +52,9 @@ pub async fn post(
         .fetch_one(&database)
         .await;
 
-    let session_id = match result {
-        Ok(row) => row.get_unchecked::<i64, _>(0).to_le_bytes(),
-        Err(e) => {
-            log::error!("{:?}", e);
-
-            send_response!(
-                respond,
-                INTERNAL_SERVER_ERROR,
-                Response::failure("Internal Server Error")
-            );
-        }
-    };
+    let session_id = unwrap_internal_error!(respond, result)
+        .get_unchecked::<i64, _>(0)
+        .to_le_bytes();
 
     let mut mac = Hmac::<Sha256>::new_from_slice(AUTH_SECRET.as_bytes()).unwrap();
     mac.update(&session_id);
