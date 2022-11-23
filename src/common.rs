@@ -69,20 +69,6 @@ impl Credentials {
 pub static ARGON2: once_cell::sync::Lazy<argon2::Argon2> =
     once_cell::sync::Lazy::new(|| argon2::Argon2::default());
 
-pub static AUTH_SECRET: once_cell::sync::Lazy<String> =
-    once_cell::sync::Lazy::new(|| std::env::var("AUTH_SECRET").unwrap_or(String::from("secret")));
-
-#[macro_export]
-macro_rules! signature {
-    ($session_id:expr) => {{
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-
-        let mut mac = Hmac::<Sha256>::new_from_slice(AUTH_SECRET.as_bytes()).unwrap();
-        mac.update($session_id);
-        mac.finalize().into_bytes()
-    }};
-}
 #[macro_export]
 macro_rules! send_response {
     ($respond:ident, $code:ident, $body:expr) => {
@@ -162,39 +148,16 @@ macro_rules! unwrap_internal_error {
 #[macro_export]
 macro_rules! check_auth_token {
     ($request:ident, $respond:ident) => {{
-        let token = match $request.headers().get(http::header::AUTHORIZATION) {
-            Some(token) => match base64::decode(token.as_bytes()) {
-                Ok(token) => {
-                    if token.len() != 40 {
-                        send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
-                    }
-
-                    token
-                }
+        match $request.headers().get(http::header::AUTHORIZATION) {
+            Some(token) => match auth::decode_token(token.as_bytes()) {
+                Ok(session_id) => session_id,
                 Err(_) => {
-                    send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
+                    send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
                 }
             },
             None => {
                 send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
             }
-        };
-
-        let (session_id, s1) = token.split_at(8);
-
-        let s2 = signature!(session_id);
-
-        // verify signature
-        for index in 0..32 {
-            if s1[index] != s2[index] {
-                send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
-            }
         }
-
-        let mut buff = [0u8; 8];
-
-        unsafe { std::ptr::copy_nonoverlapping(session_id.as_ptr(), buff.as_mut_ptr(), 8) }
-
-        i64::from_le_bytes(buff)
     }};
 }

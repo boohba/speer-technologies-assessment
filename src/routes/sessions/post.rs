@@ -43,15 +43,7 @@ pub async fn post(
         .get_unchecked::<i64, _>(0)
         .to_le_bytes();
 
-    let signature = signature!(&session_id);
+    let token = auth::create_token(&session_id);
 
-    // session_id + hmacsha256 signature, kind of like JWT but more efficient
-    let mut token = [0u8; 40];
-
-    unsafe {
-        std::ptr::copy_nonoverlapping(session_id.as_ptr(), token.as_mut_ptr(), 8);
-        std::ptr::copy_nonoverlapping(signature.as_ptr(), token.as_mut_ptr().offset(8), 32);
-    }
-
-    send_response!(respond, CREATED, Response::success(base64::encode(token)));
+    send_response!(respond, CREATED, Response::success(token));
 }
