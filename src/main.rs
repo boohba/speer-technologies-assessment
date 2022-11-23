@@ -1,13 +1,12 @@
 mod routes;
-
-pub mod common;
+mod common;
 
 pub mod prelude {
     pub use crate::common::*;
     pub use crate::*;
 }
 
-use prelude::*;
+use common::*;
 
 #[tokio::main]
 async fn main() {
