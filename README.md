@@ -35,6 +35,8 @@ cargo test -- --nocapture
 
 # Using the API
 
+### Response format
+
 Every response will contain the following JSON object:
 
 | Field   | Type              | Required | Description                                                |
@@ -43,9 +45,13 @@ Every response will contain the following JSON object:
 | message | string            | no       | The error description. Always present in case of an error. |
 | result  | endpoint specific | no       | The result of an operation.                                |
 
-Most endpoints will require you to send an `Authorization` header containing the authorization token. You can obtain it via the `POST /sessions` endpoint.
+### Authorization
+
+Most endpoints require you to set an `Authorization` header containing the authorization token. You can obtain it via the `POST /sessions` endpoint.
 
 ## POST /users
+
+#### Payload:
 
 | Field    | Type              | Required | Description                                                                 |
 |----------|-------------------|----------|-----------------------------------------------------------------------------|
@@ -82,6 +88,8 @@ curl --http2 -k -X POST 'https://localhost:8443/users' \
 
 ## POST /sessions
 
+#### Payload:
+
 | Field    | Type              | Required | Description                                                                 |
 |----------|-------------------|----------|-----------------------------------------------------------------------------|
 | username | string            | yes      | The username. It's length must be between 3 and 32 characters (inclusive).  |
@@ -117,13 +125,15 @@ curl --http2 -k -X POST 'https://localhost:8443/sessions' \
 
 ## POST /tweets
 
-**Requires authorization*
+#### Payload:
 
 | Field    | Type              | Required | Description                                                                       |
 |----------|-------------------|----------|-----------------------------------------------------------------------------------|
 | text     | string            | yes      | The tweet content. It's length must be between 1 and 4096 characters (inclusive). |
 
 On success, the `result` field will contain a `number` tweet ID.
+
+**Requires authorization*
 
 ### Examples
 
@@ -154,9 +164,7 @@ curl --http2 -k -X POST 'https://localhost:8443/tweets' \
 
 ## GET /tweets
 
-**Requires authorization*
-
-#### Optional query parameters
+#### Optional Query Parameters:
 
 | Name   | Type   | Description                                                                  |
 |--------|--------|------------------------------------------------------------------------------|
@@ -164,6 +172,8 @@ curl --http2 -k -X POST 'https://localhost:8443/tweets' \
 | offset | number | The number of tweets to skip. The default value is 0.                        |
 
 On success, the `result` field will contain an array of tweets.
+
+**Requires authorization*
 
 ### Examples
 
@@ -198,7 +208,7 @@ curl --http2 -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
 
 ## PATCH /tweets
 
-**Requires authorization*
+#### Payload:
 
 | Field | Type   | Required | Description                                                                       |
 |-------|--------|----------|-----------------------------------------------------------------------------------|
@@ -206,6 +216,8 @@ curl --http2 -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
 | text  | string | yes      | The tweet content. It's length must be between 1 and 4096 characters (inclusive). |
 
 The `result` field is always `null`.
+
+**Requires authorization*
 
 ### Examples
 
@@ -235,13 +247,15 @@ curl --http2 -k -X PATCH 'https://localhost:8443/tweets' \
 
 ## DELETE /tweets
 
-**Requires authorization*
+#### Payload:
 
 | Field | Type   | Required | Description                                                                       |
 |-------|--------|----------|-----------------------------------------------------------------------------------|
 | id    | number | yes      | The tweet ID.                                                                     |
 
 The `result` field is always `null`.
+
+**Requires authorization*
 
 ### Examples
 
