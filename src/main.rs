@@ -118,11 +118,11 @@ struct Response<T: serde::Serialize> {
 
 impl<T: serde::Serialize> Response<T> {
     #[inline(always)]
-    pub fn success(result: Option<T>) -> Self {
+    pub fn success(result: T) -> Self {
         Response {
             error: false,
             message: None,
-            result,
+            result: Some(result),
         }
     }
 }

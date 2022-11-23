@@ -65,5 +65,5 @@ pub async fn post(
         );
     }
 
-    send_response!(respond, CREATED, Response::<()>::success(None));
+    send_response!(respond, CREATED, Response::success(user_id));
 }

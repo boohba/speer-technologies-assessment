@@ -11,19 +11,22 @@ docker compose up
 
 Every response will contain the following JSON object:
 
-| Field   | Type              | Optional | Description                                                |
-|---------|-------------------|-------|------------------------------------------------------------|
-| error   | boolean           | no    | Indicates whether the request has failed.                  |
-| message | string            | yes   | The error description. Always present in case of an error. |
-| result  | endpoint specific | yes   | The result of an operation.                                |
+| Field   | Type              | Required | Description                                                |
+|---------|-------------------|----------|------------------------------------------------------------|
+| error   | boolean           | res      | Indicates whether the request has failed.                  |
+| message | string            | no       | The error description. Always present in case of an error. |
+| result  | endpoint specific | no       | The result of an operation.                                |
 
 Most endpoints will require you to send an `Authorization` header containing the authorization token. You obtain it via the `POST /sessions` endpoint.
 
 ## POST /users
 
-Create a user using a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
+| Field    | Type              | Required | Description                                                                 |
+|----------|-------------------|----------|-----------------------------------------------------------------------------|
+| username | string            | yes      | The username. It's length must be between 3 and 32 characters (inclusive).  |
+| password | string            | yes     | The password. It's length must be between 3 and 128 characters (inclusive). |
 
-The `result` field is always null.
+On success, the `result` field will contain a `number` user ID.
 
 ### Examples
 
@@ -52,7 +55,10 @@ curl --http2 -k -X POST 'https://localhost:8443/users' \
 
 ## POST /sessions
 
-Create a session using a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
+| Field    | Type              | Required | Description                                                                 |
+|----------|-------------------|----------|-----------------------------------------------------------------------------|
+| username | string            | yes      | The username. It's length must be between 3 and 32 characters (inclusive).  |
+| password | string            | yes     | The password. It's length must be between 3 and 128 characters (inclusive). |
 
 On success, the `result` field will contain a `string` authorization token.
 

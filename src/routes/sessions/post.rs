@@ -72,6 +72,6 @@ pub async fn post(
     send_response!(
         respond,
         CREATED,
-        Response::success(Some(base64::encode(auth_token)))
+        Response::success(base64::encode(auth_token))
     );
 }

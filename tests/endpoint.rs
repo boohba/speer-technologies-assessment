@@ -49,7 +49,7 @@ async fn test_users() {
     test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, "aaa", CONTENT_TYPE: "application/json");
     test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, r#"{"username":"aa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
     test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Invalid request payload"}"#, r#"{"username":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, CREATED, r#"{"error":false}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
+    test!(post, URL, CREATED, r#"{"error":false,"result":1}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
     test!(post, URL, CONFLICT, r#"{"error":true,"message":"Username already exists"}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
 }
 
