@@ -1,5 +1,14 @@
 mod routes;
 
+pub mod common;
+
+pub mod prelude {
+    pub use crate::common::*;
+    pub use crate::*;
+}
+
+use prelude::*;
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -19,8 +28,9 @@ async fn main() {
         tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config))
     };
 
-    let database_address = std::env::var("DATABASE_ADDRESS")
-        .unwrap_or(String::from("postgres://postgres:postgres@localhost/postgres"));
+    let database_address = std::env::var("DATABASE_ADDRESS").unwrap_or(String::from(
+        "postgres://postgres:postgres@localhost/postgres",
+    ));
 
     // https://wiki.postgresql.org/wiki/Number_Of_Database_Connections
     let database = sqlx::postgres::PgPoolOptions::new()
@@ -29,8 +39,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let server_address = std::env::var("SERVER_ADDRESS")
-        .unwrap_or(String::from("[::]:8443"));
+    let server_address = std::env::var("SERVER_ADDRESS").unwrap_or(String::from("[::]:8443"));
 
     // setup a socket for accepting connections
     let listener = tokio::net::TcpListener::bind(server_address).await.unwrap();
@@ -54,8 +63,6 @@ async fn main() {
         }
     }
 }
-
-type Database = sqlx::Pool<sqlx::postgres::Postgres>;
 
 async fn handle_connection(
     connection: tokio::net::TcpStream,
@@ -130,9 +137,6 @@ impl Response<()> {
         }
     }
 }
-
-type Request = http::Request<h2::RecvStream>;
-type Respond = h2::server::SendResponse<bytes::Bytes>;
 
 async fn handle_request(mut request: Request, mut respond: Respond, database: Database) {
     macro_rules! error {
