@@ -1,6 +1,8 @@
 mod common;
 mod routes;
 
+pub mod auth;
+
 use common::*;
 
 #[tokio::main]
