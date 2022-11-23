@@ -17,7 +17,7 @@ Every response will contain the following JSON object:
 | message | string            | no       | The error description. Always present in case of an error. |
 | result  | endpoint specific | no       | The result of an operation.                                |
 
-Most endpoints will require you to send an `Authorization` header containing the authorization token. You obtain it via the `POST /sessions` endpoint.
+Most endpoints will require you to send an `Authorization` header containing the authorization token. You can obtain it via the `POST /sessions` endpoint.
 
 ## POST /users
 
@@ -40,7 +40,8 @@ curl --http2 -k -X POST 'https://localhost:8443/users' \
 
 ```json
 {
-  "error": false
+  "error": false,
+  "result": 1
 }
 ```
 
