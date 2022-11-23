@@ -24,28 +24,31 @@ pub async fn post(
     let result =
         sqlx::query("INSERT INTO users (username) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id")
             .bind(credentials.username)
-            .fetch_one(&database)
+            .fetch_optional(&database)
             .await;
 
     let user_id: i64 = match result {
-        Ok(row) => row.get_unchecked(0),
-        Err(e) => {
+        Ok(row) => {
             // postgres will not return user id in case of a conflict
-            if matches!(e, sqlx::error::Error::RowNotFound) {
-                send_response!(
-                    respond,
-                    CONFLICT,
-                    Response::failure("Username already exists")
-                );
-            } else {
-                log::error!("{:?}", e);
-
-                send_response!(
-                    respond,
-                    INTERNAL_SERVER_ERROR,
-                    Response::failure("Internal Server Error")
-                );
+            match row {
+                Some(row) => row.get_unchecked(0),
+                None => {
+                    send_response!(
+                        respond,
+                        CONFLICT,
+                        Response::failure("Username already exists")
+                    );
+                }
             }
+        }
+        Err(e) => {
+            log::error!("{:?}", e);
+
+            send_response!(
+                respond,
+                INTERNAL_SERVER_ERROR,
+                Response::failure("Internal Server Error")
+            );
         }
     };
 
