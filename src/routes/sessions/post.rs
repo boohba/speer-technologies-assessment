@@ -44,8 +44,13 @@ pub async fn post(
         }
     };
 
-    let user_id = row.get_unchecked::<i64, _>(0);
-    let password_hash = row.get_unchecked::<String, _>(1);
+    // password_hash might not be initialized yet
+    let password_hash = match row.get_unchecked::<Option<String>, _>(1) {
+        Some(password_hash) => password_hash,
+        None => {
+            send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
+        }
+    };
 
     let password_hash = match PasswordHash::new(&password_hash) {
         Ok(password_hash) => password_hash,
@@ -65,7 +70,7 @@ pub async fn post(
     }
 
     let result = sqlx::query("INSERT INTO sessions (user_id) VALUES ($1) RETURNING id")
-        .bind(user_id)
+        .bind(row.get_unchecked::<i64, _>(0))
         .fetch_one(&database)
         .await;
 
