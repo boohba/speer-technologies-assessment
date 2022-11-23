@@ -1,7 +1,5 @@
 use crate::prelude::*;
 use argon2::{PasswordHash, PasswordVerifier};
-use hmac::{Hmac, Mac};
-use sha2::Sha256;
 use sqlx::Row;
 
 pub async fn post(
@@ -56,22 +54,17 @@ pub async fn post(
         .get_unchecked::<i64, _>(0)
         .to_le_bytes();
 
-    let mut mac = Hmac::<Sha256>::new_from_slice(AUTH_SECRET.as_bytes()).unwrap();
-    mac.update(&session_id);
-
-    let result = mac.finalize().into_bytes();
-
     // session_id + hmacsha256 signature, kind of like JWT but more efficient
-    let mut auth_token = [0u8; 72];
+    let mut token = [0u8; 40];
 
     unsafe {
-        std::ptr::copy_nonoverlapping(session_id.as_ptr(), auth_token.as_mut_ptr(), 8);
-        std::ptr::copy_nonoverlapping(result.as_ptr(), auth_token.as_mut_ptr(), 64);
+        std::ptr::copy_nonoverlapping(session_id.as_ptr(), token.as_mut_ptr(), 8);
+        std::ptr::copy_nonoverlapping(
+            signature!(&session_id).as_ptr(),
+            token.as_mut_ptr().offset(8),
+            32,
+        );
     }
 
-    send_response!(
-        respond,
-        CREATED,
-        Response::success(base64::encode(auth_token))
-    );
+    send_response!(respond, CREATED, Response::success(base64::encode(token)));
 }

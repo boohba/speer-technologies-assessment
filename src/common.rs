@@ -23,3 +23,15 @@ pub static ARGON2: once_cell::sync::Lazy<argon2::Argon2> =
 
 pub static AUTH_SECRET: once_cell::sync::Lazy<String> =
     once_cell::sync::Lazy::new(|| std::env::var("AUTH_SECRET").unwrap_or(String::from("secret")));
+
+#[macro_export]
+macro_rules! signature {
+    ($session_id:expr) => {{
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(AUTH_SECRET.as_bytes()).unwrap();
+        mac.update($session_id);
+        mac.finalize().into_bytes()
+    }};
+}
