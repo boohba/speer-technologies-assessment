@@ -7,6 +7,32 @@ https://docs.docker.com/compose/
 docker compose up
 ```
 
+# Running endpoint tests
+
+1. Start the PostgreSQL instance
+
+```bash
+docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:alpine
+```
+
+2. Apply migrations
+
+```bash
+docker run --rm --net=host -v $PWD/migrations/:/flyway/sql flyway/flyway:latest-alpine -url=jdbc:postgresql://localhost/postgres -user=postgres -password=postgres migrate
+```
+
+3. Run the application
+
+```bash
+RUST_LOG=trace cargo run
+```
+
+4. Run the tests
+
+```bash
+cargo test -- --nocapture
+```
+
 # Using the API
 
 Every response will contain the following JSON object:
@@ -241,30 +267,4 @@ curl --http2 -k -X DELETE 'https://localhost:8443/tweets' \
   "error": true,
   "message": "Unauthorized"
 }
-```
-
-# Running endpoint tests
-
-1. Start the PostgreSQL instance
-
-```bash
-docker run --rm -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:alpine
-```
-
-2. Apply migrations
-
-```bash
-docker run --rm --net=host -v $PWD/migrations/:/flyway/sql flyway/flyway:latest-alpine -url=jdbc:postgresql://localhost/postgres -user=postgres -password=postgres migrate
-```
-
-3. Run the application
-
-```bash
-RUST_LOG=trace cargo run
-```
-
-4. Run the tests
-
-```bash
-cargo test -- --nocapture
 ```
