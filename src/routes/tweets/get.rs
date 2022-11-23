@@ -18,65 +18,37 @@ pub async fn get(
                     "limit" => {
                         if let Ok(value) = value.parse::<i32>() {
                             if value < 0 || value > 50 {
-                                send_response!(
-                                    respond,
-                                    BAD_REQUEST,
-                                    Response::failure("Invalid request payload")
-                                );
+                                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
                             } else {
                                 limit = value;
                             }
                         } else {
-                            send_response!(
-                                respond,
-                                BAD_REQUEST,
-                                Response::failure("Invalid request payload")
-                            );
+                            send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
                         }
                     }
                     "offset" => {
                         if let Ok(value) = value.parse::<i32>() {
                             if value < 0 {
-                                send_response!(
-                                    respond,
-                                    BAD_REQUEST,
-                                    Response::failure("Invalid request payload")
-                                );
+                                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
                             } else {
                                 offset = value;
                             }
                         } else {
-                            send_response!(
-                                respond,
-                                BAD_REQUEST,
-                                Response::failure("Invalid request payload")
-                            );
+                            send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
                         }
                     }
                     _ => {
-                        send_response!(
-                            respond,
-                            BAD_REQUEST,
-                            Response::failure("Invalid request payload")
-                        );
+                        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
                     }
                 }
             } else {
-                send_response!(
-                    respond,
-                    BAD_REQUEST,
-                    Response::failure("Invalid request payload")
-                );
+                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
             }
         }
     }
 
     if limit < 0 || limit > 50 || offset < 0 {
-        send_response!(
-            respond,
-            BAD_REQUEST,
-            Response::failure("Invalid request payload")
-        );
+        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
     }
 
     // making an index on tweets.user_id and/or tweets.time_created will not necessarily improve

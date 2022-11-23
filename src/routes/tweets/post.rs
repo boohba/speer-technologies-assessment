@@ -24,11 +24,7 @@ pub async fn post(
     let tweet = body!(request, respond, Tweet);
 
     if tweet.is_invalid() {
-        send_response!(
-            respond,
-            BAD_REQUEST,
-            Response::failure("Invalid request payload")
-        );
+        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
     }
 
     // this is still relatively efficient (in case you are wondering)

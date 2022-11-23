@@ -127,8 +127,14 @@ impl<T: serde::Serialize> Response<T> {
 }
 
 impl Response<()> {
+    pub const NOT_FOUND: Self = Self::failure("Not Found");
+    pub const BAD_REQUEST: Self = Self::failure("Bad Request");
+    pub const INTERNAL_SERVER_ERROR: Self = Self::failure("Internal Server Error");
+    pub const UNAUTHORIZED: Self = Self::failure("Unauthorized");
+    pub const UNSUPPORTED_MEDIA_TYPE: Self = Self::failure("Unsupported Media Type");
+
     #[inline(always)]
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Response {
             error: false,
             message: None,
@@ -137,7 +143,7 @@ impl Response<()> {
     }
 
     #[inline(always)]
-    pub fn failure(message: &'static str) -> Self {
+    pub const fn failure(message: &'static str) -> Self {
         Response::<()> {
             error: true,
             message: Some(message),
@@ -221,23 +227,19 @@ macro_rules! send_response {
 
 #[macro_export]
 macro_rules! check_content_type {
-    ($request:ident, $respond:ident, $content_type:literal) => {
+    ($request:ident, $respond:ident) => {
         match $request.headers().get(http::header::CONTENT_TYPE) {
             Some(val) => {
-                if val != $content_type {
+                if val != "application/json" {
                     send_response!(
                         $respond,
                         UNSUPPORTED_MEDIA_TYPE,
-                        Response::failure("Unsupported Media Type")
+                        Response::UNSUPPORTED_MEDIA_TYPE
                     );
                 }
             }
             None => {
-                send_response!(
-                    $respond,
-                    BAD_REQUEST,
-                    Response::failure("Content-Type is not set")
-                );
+                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
             }
         }
     };
@@ -250,22 +252,14 @@ macro_rules! body {
         let body = match $request.body_mut().data().await {
             Some(body) => body?,
             None => {
-                send_response!(
-                    $respond,
-                    BAD_REQUEST,
-                    Response::failure("Invalid request payload")
-                );
+                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
             }
         };
 
         match serde_json::from_slice::<$type>(&body) {
             Ok(body) => body,
             Err(_) => {
-                send_response!(
-                    $respond,
-                    BAD_REQUEST,
-                    Response::failure("Invalid request payload")
-                );
+                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
             }
         }
     }};
@@ -282,7 +276,7 @@ macro_rules! unwrap_internal_error {
                 send_response!(
                     $respond,
                     INTERNAL_SERVER_ERROR,
-                    Response::failure("Internal Server Error")
+                    Response::INTERNAL_SERVER_ERROR
                 );
             }
         }
@@ -296,25 +290,17 @@ macro_rules! check_auth_token {
             Some(token) => match base64::decode(token.as_bytes()) {
                 Ok(token) => {
                     if token.len() != 40 {
-                        send_response!(
-                            $respond,
-                            BAD_REQUEST,
-                            Response::failure("Invalid request payload")
-                        );
+                        send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
                     }
 
                     token
                 }
                 Err(_) => {
-                    send_response!(
-                        $respond,
-                        BAD_REQUEST,
-                        Response::failure("Invalid request payload")
-                    );
+                    send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
                 }
             },
             None => {
-                send_response!($respond, UNAUTHORIZED, Response::failure("Unauthorized"));
+                send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
             }
         };
 
@@ -325,7 +311,7 @@ macro_rules! check_auth_token {
         // verify signature
         for index in 0..32 {
             if s1[index] != s2[index] {
-                send_response!($respond, UNAUTHORIZED, Response::failure("Unauthorized"));
+                send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
             }
         }
 
