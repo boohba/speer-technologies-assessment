@@ -21,7 +21,7 @@ pub async fn delete(
         .await;
 
     if unwrap_internal_error!(respond, result).rows_affected() == 0 {
-        send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
+        send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
     }
 
     send_response!(respond, OK, Response::empty());

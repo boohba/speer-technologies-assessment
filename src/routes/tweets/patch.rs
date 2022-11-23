@@ -25,11 +25,7 @@ pub async fn patch(
     let tweet = body!(request, respond, Tweet);
 
     if tweet.is_invalid() {
-        send_response!(
-            respond,
-            BAD_REQUEST,
-            Response::failure("Invalid request payload")
-        );
+        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
     }
 
     let result = sqlx::query("UPDATE tweets SET text = $1 WHERE id = $2 AND user_id = (SELECT user_id FROM sessions WHERE id = $3)")
@@ -40,7 +36,7 @@ pub async fn patch(
         .await;
 
     if unwrap_internal_error!(respond, result).rows_affected() == 0 {
-        send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
+        send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
     }
 
     send_response!(respond, OK, Response::empty());

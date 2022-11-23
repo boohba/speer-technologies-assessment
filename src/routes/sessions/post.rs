@@ -7,16 +7,12 @@ pub async fn post(
     respond: &mut Respond,
     database: Database,
 ) -> Result<(), h2::Error> {
-    check_content_type!(request, respond, "application/json");
+    check_content_type!(request, respond);
 
     let credentials = body!(request, respond, Credentials);
 
     if credentials.is_invalid() {
-        send_response!(
-            respond,
-            BAD_REQUEST,
-            Response::failure("Invalid request payload")
-        );
+        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
     }
 
     let result = sqlx::query("SELECT id, password_hash FROM users WHERE username = $1")
@@ -27,7 +23,7 @@ pub async fn post(
     let row = match unwrap_internal_error!(respond, result) {
         Some(row) => row,
         None => {
-            send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
+            send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
         }
     };
 
@@ -35,14 +31,14 @@ pub async fn post(
     let password_hash = match row.get_unchecked::<Option<String>, _>(1) {
         Some(password_hash) => password_hash,
         None => {
-            send_response!(respond, NOT_FOUND, Response::failure("Not Found"));
+            send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
         }
     };
 
     let password_hash = unwrap_internal_error!(respond, PasswordHash::new(&password_hash));
 
     if let Err(_) = ARGON2.verify_password(credentials.password.as_bytes(), &password_hash) {
-        send_response!(respond, UNAUTHORIZED, Response::failure("Unauthorized"));
+        send_response!(respond, UNAUTHORIZED, Response::UNAUTHORIZED);
     }
 
     let result = sqlx::query("INSERT INTO sessions (user_id) VALUES ($1) RETURNING id")
