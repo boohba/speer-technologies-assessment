@@ -9,17 +9,16 @@ pub async fn post(
     respond: &mut Respond,
     database: Database,
 ) -> Result<(), h2::Error> {
-    check_content_type!(request, respond, "application/json");
+    check_content_type!(request, respond);
 
     let credentials = body!(request, respond, Credentials);
 
     if credentials.is_invalid() {
-        send_response!(
-            respond,
-            BAD_REQUEST,
-            Response::failure("Invalid request payload")
-        );
+        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
     }
+
+    // if an in-progress transaction goes out of scope, it will rollback automatically
+    let transaction = unwrap_internal_error!(respond, database.begin().await);
 
     let result =
         sqlx::query("INSERT INTO users (username) VALUES ($1) ON CONFLICT DO NOTHING RETURNING id")
@@ -44,26 +43,17 @@ pub async fn post(
     // in production i would prefer to either avoid password-based auth at all or to
     // outsource it to some cloud service (like auth0 or Cognito)
     // https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html#argon2id
-    let password_hash =
-        unwrap_internal_error!(respond, ARGON2.hash_password(password, &salt)).to_string();
+    let hash = unwrap_internal_error!(respond, ARGON2.hash_password(password, &salt)).to_string();
 
     let result = sqlx::query("UPDATE users SET password_hash = $1 WHERE id = $2")
-        .bind(password_hash)
+        .bind(hash)
         .bind(user_id)
         .execute(&database)
         .await;
 
-    // the username is already reserved at this point, so it should be cleaned up in
-    // case of an error, but for the sake of simplicity we will not do that.
-    if let Err(e) = result {
-        log::error!("{:?}", e);
+    unwrap_internal_error!(respond, result);
 
-        send_response!(
-            respond,
-            INTERNAL_SERVER_ERROR,
-            Response::failure("Internal Server Error")
-        );
-    }
+    tokio::spawn(transaction.commit());
 
     send_response!(respond, CREATED, Response::success(user_id));
 }

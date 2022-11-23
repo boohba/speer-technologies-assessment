@@ -21,23 +21,18 @@ pub async fn post(
         .await;
 
     let row = match unwrap_internal_error!(respond, result) {
-        Some(row) => row,
+        Some(row) => {
+            row
+        },
         None => {
             send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
         }
     };
 
-    // password_hash might not be initialized yet, see routes::users::post
-    let password_hash = match row.get_unchecked::<Option<String>, _>(1) {
-        Some(password_hash) => password_hash,
-        None => {
-            send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
-        }
-    };
+    let hash = row.get_unchecked::<String, _>(1);
+    let hash = unwrap_internal_error!(respond, PasswordHash::new(&hash));
 
-    let password_hash = unwrap_internal_error!(respond, PasswordHash::new(&password_hash));
-
-    if let Err(_) = ARGON2.verify_password(credentials.password.as_bytes(), &password_hash) {
+    if let Err(_) = ARGON2.verify_password(credentials.password.as_bytes(), &hash) {
         send_response!(respond, UNAUTHORIZED, Response::UNAUTHORIZED);
     }
 
@@ -50,16 +45,14 @@ pub async fn post(
         .get_unchecked::<i64, _>(0)
         .to_le_bytes();
 
+    let signature = signature!(&session_id);
+
     // session_id + hmacsha256 signature, kind of like JWT but more efficient
     let mut token = [0u8; 40];
 
     unsafe {
         std::ptr::copy_nonoverlapping(session_id.as_ptr(), token.as_mut_ptr(), 8);
-        std::ptr::copy_nonoverlapping(
-            signature!(&session_id).as_ptr(),
-            token.as_mut_ptr().offset(8),
-            32,
-        );
+        std::ptr::copy_nonoverlapping(signature.as_ptr(), token.as_mut_ptr().offset(8), 32);
     }
 
     send_response!(respond, CREATED, Response::success(base64::encode(token)));
