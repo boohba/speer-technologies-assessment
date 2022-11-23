@@ -1,4 +1,4 @@
-use crate::prelude::*;
+use crate::common::*;
 use argon2::{PasswordHash, PasswordVerifier};
 use sqlx::Row;
 
@@ -21,9 +21,7 @@ pub async fn post(
         .await;
 
     let row = match unwrap_internal_error!(respond, result) {
-        Some(row) => {
-            row
-        },
+        Some(row) => row,
         None => {
             send_response!(respond, NOT_FOUND, Response::NOT_FOUND);
         }
