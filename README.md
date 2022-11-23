@@ -63,7 +63,7 @@ On success, the `result` field will contain a `number` user ID.
 ### Examples
 
 ```bash
-curl --http2 -k -X POST 'https://localhost:8443/users' \
+curl -k -X POST 'https://localhost:8443/users' \
   -H 'Content-Type: application/json' \
   -d '{"username":"hello","password":"world"}'
 ```
@@ -100,7 +100,7 @@ On success, the `result` field will contain a `string` authorization token.
 ### Examples
 
 ```bash
-curl --http2 -k -X POST 'https://localhost:8443/sessions' \
+curl -k -X POST 'https://localhost:8443/sessions' \
   -H 'Content-Type: application/json' \
   -d '{"username":"hello","password":"world"}'
 ```
@@ -138,7 +138,7 @@ On success, the `result` field will contain a `number` tweet ID.
 ### Examples
 
 ```bash
-curl --http2 -k -X POST 'https://localhost:8443/tweets' \
+curl -k -X POST 'https://localhost:8443/tweets' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: your_token' \
   -d '{"text":"a"}'
@@ -178,7 +178,7 @@ On success, the `result` field will contain an array of tweets.
 ### Examples
 
 ```bash
-curl --http2 -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
+curl -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
   -H 'Authorization: your_token'
 ```
 
@@ -222,7 +222,7 @@ The `result` field is always `null`.
 ### Examples
 
 ```bash
-curl --http2 -k -X PATCH 'https://localhost:8443/tweets' \
+curl -k -X PATCH 'https://localhost:8443/tweets' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: your_token' \
   -d '{"id":1,"text":"Hello, World!"}'
@@ -260,7 +260,7 @@ The `result` field is always `null`.
 ### Examples
 
 ```bash
-curl --http2 -k -X DELETE 'https://localhost:8443/tweets' \
+curl -k -X DELETE 'https://localhost:8443/tweets' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: your_token' \
   -d '{"id":1}'
