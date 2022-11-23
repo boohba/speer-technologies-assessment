@@ -174,6 +174,10 @@ async fn handle_request(mut request: Request, mut respond: Respond, database: Da
             http::Method::POST => call!(routes::users::post),
             _ => error!(METHOD_NOT_ALLOWED),
         },
+        "/sessions" => match *request.method() {
+            http::Method::POST => call!(routes::sessions::post),
+            _ => error!(METHOD_NOT_ALLOWED),
+        },
         _ => error!(NOT_FOUND),
     };
 

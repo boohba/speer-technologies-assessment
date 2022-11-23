@@ -38,9 +38,11 @@ name = "assessment"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "base64",
  "bytes",
  "env_logger",
  "h2",
+ "hmac",
  "http",
  "log",
  "num_cpus",
@@ -49,6 +51,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "tokio",
  "tokio-rustls",

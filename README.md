@@ -19,7 +19,7 @@ Every response will contain the following JSON object:
 
 ## POST /users
 
-Create a user with a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
+Create a user using a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
 
 The `result` field is always null.
 
@@ -45,6 +45,38 @@ curl --http2 -k -X POST 'https://localhost:8443/users' \
 {
   "error": true,
   "message": "Username already exists"
+}
+```
+
+## POST /sessions
+
+Create a session using a username and password. The username length must be between 3 and 32 (inclusive). The password length must be between 3 and 128 (inclusive).
+
+On success, the `result` field will contain a `string` authorization token.
+
+### Examples
+
+```bash
+curl --http2 -k -X POST 'https://localhost:8443/sessions' \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"hello","password":"world"}'
+```
+
+**201 Created**
+
+```json
+{
+  "error": false,
+  "result": "..."
+}
+```
+
+**401 Unauthorized**
+
+```json
+{
+  "error": true,
+  "message": "Unauthorized"
 }
 ```
 
