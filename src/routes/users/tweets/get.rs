@@ -1,11 +1,7 @@
 use crate::common::*;
 
-pub async fn get(
-    request: &mut Request,
-    respond: &mut Respond,
-    database: Database,
-) -> Result<(), h2::Error> {
-    let session_id = check_auth_token!(request, respond);
+pub async fn get(request: &mut Request, database: Database) -> Result {
+    let session_id = check_auth_token!(request);
 
     let mut limit = 50;
     let mut offset = 0;
@@ -18,37 +14,37 @@ pub async fn get(
                     "limit" => {
                         if let Ok(value) = value.parse::<i32>() {
                             if value < 0 || value > 50 {
-                                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                                return Ok(Response::bad_request());
                             } else {
                                 limit = value;
                             }
                         } else {
-                            send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                            return Ok(Response::bad_request());
                         }
                     }
                     "offset" => {
                         if let Ok(value) = value.parse::<i32>() {
                             if value < 0 {
-                                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                                return Ok(Response::bad_request());
                             } else {
                                 offset = value;
                             }
                         } else {
-                            send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                            return Ok(Response::bad_request());
                         }
                     }
                     _ => {
-                        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                        return Ok(Response::bad_request());
                     }
                 }
             } else {
-                send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+                return Ok(Response::bad_request());
             }
         }
     }
 
     if limit < 0 || limit > 50 || offset < 0 {
-        send_response!(respond, BAD_REQUEST, Response::BAD_REQUEST);
+        return Ok(Response::bad_request());
     }
 
     // making an index on tweets.user_id and/or tweets.time_created will not necessarily improve
@@ -60,32 +56,17 @@ pub async fn get(
         .fetch_all(&database)
         .await;
 
-    #[derive(serde::Serialize)]
-    struct Tweet {
-        id: i64,
-        text: String,
-        like_count: i32,
-        time_created: i64,
-    }
-
-    impl Tweet {
-        #[inline(always)]
-        fn from(row: sqlx::postgres::PgRow) -> Self {
-            Self {
-                id: row.get_unchecked(0),
-                text: row.get_unchecked(1),
-                like_count: row.get_unchecked(2),
-                time_created: row.get_unchecked(3),
-            }
-        }
-    }
-
-    use sqlx::Row;
-
-    let response = unwrap_internal_error!(respond, result)
+    let response = unwrap_internal_error!(result)
         .into_iter()
-        .map(|row| Tweet::from(row))
+        .map(|row| {
+            Tweet::new(
+                row.get_unchecked(0),
+                row.get_unchecked(1),
+                row.get_unchecked(2),
+                row.get_unchecked(3),
+            )
+        })
         .collect::<Vec<Tweet>>();
 
-    send_response!(respond, OK, Response::success(response));
+    Ok((StatusCode::OK, Response::success(response)))
 }

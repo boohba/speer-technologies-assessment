@@ -1,4 +1,10 @@
+use once_cell::sync::Lazy;
+
 pub use crate::*;
+pub use bytes::Bytes;
+pub use http::StatusCode;
+pub use serde_json::json;
+pub use sqlx::Row;
 
 #[derive(serde::Serialize)]
 pub struct Response<T: serde::Serialize> {
@@ -11,39 +17,50 @@ pub struct Response<T: serde::Serialize> {
 
 impl<T: serde::Serialize> Response<T> {
     #[inline(always)]
-    pub fn success(result: T) -> Self {
-        Response {
-            error: false,
-            message: None,
-            result: Some(result),
-        }
+    fn new(error: bool, message: Option<&'static str>, result: Option<T>) -> Bytes {
+        Bytes::from(
+            serde_json::to_vec(&Self {
+                error,
+                message,
+                result,
+            })
+            .unwrap(),
+        )
+    }
+
+    #[inline(always)]
+    pub fn success(result: T) -> Bytes {
+        Self::new(false, None, Some(result))
     }
 }
 
+macro_rules! error {
+    ($ident:ident, $status:ident) => {
+        #[inline(always)]
+        pub fn $ident() -> (StatusCode, Bytes) {
+            (
+                StatusCode::$status,
+                Response::<()>::error(StatusCode::$status.canonical_reason().unwrap()),
+            )
+        }
+    };
+}
+
 impl Response<()> {
-    pub const NOT_FOUND: Self = Self::failure("Not Found");
-    pub const BAD_REQUEST: Self = Self::failure("Bad Request");
-    pub const INTERNAL_SERVER_ERROR: Self = Self::failure("Internal Server Error");
-    pub const UNAUTHORIZED: Self = Self::failure("Unauthorized");
-    pub const UNSUPPORTED_MEDIA_TYPE: Self = Self::failure("Unsupported Media Type");
-
     #[inline(always)]
-    pub const fn empty() -> Self {
-        Response {
-            error: false,
-            message: None,
-            result: None,
-        }
+    pub fn error(message: &'static str) -> Bytes {
+        Self::new(true, Some(message), None)
     }
 
     #[inline(always)]
-    pub const fn failure(message: &'static str) -> Self {
-        Response::<()> {
-            error: true,
-            message: Some(message),
-            result: None,
-        }
-    }
+    pub fn empty() -> Bytes { Self::new(false, None, None) }
+
+    error!(not_found, NOT_FOUND);
+    error!(bad_request, BAD_REQUEST);
+    error!(internal_server_error, INTERNAL_SERVER_ERROR);
+    error!(unauthorized, UNAUTHORIZED);
+    error!(unsupported_media_type, UNSUPPORTED_MEDIA_TYPE);
+    error!(method_not_allowed, METHOD_NOT_ALLOWED);
 }
 
 #[derive(serde::Deserialize)]
@@ -62,51 +79,44 @@ impl Credentials {
     }
 }
 
-#[derive(serde::Deserialize)]
-pub struct TweetId {
-    pub id: i64,
+#[derive(serde::Serialize)]
+pub struct Tweet {
+    id: i64,
+    text: String,
+    like_count: i32,
+    time_created: i64,
 }
 
+impl Tweet {
+    #[inline(always)]
+    pub fn new(id: i64, text: String, like_count: i32, time_created: i64) -> Self {
+        Self {
+            id,
+            text,
+            like_count,
+            time_created,
+        }
+    }
+}
+
+pub type Result = std::result::Result<(StatusCode, Bytes), h2::Error>;
 pub type Request = http::Request<h2::RecvStream>;
 pub type Respond = h2::server::SendResponse<bytes::Bytes>;
 pub type Database = sqlx::Pool<sqlx::postgres::Postgres>;
 
-pub static ARGON2: once_cell::sync::Lazy<argon2::Argon2> =
-    once_cell::sync::Lazy::new(|| argon2::Argon2::default());
-
-#[macro_export]
-macro_rules! send_response {
-    ($respond:ident, $code:ident, $body:expr) => {
-        let response = http::Response::builder()
-            .status(http::status::StatusCode::$code)
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(())
-            .unwrap();
-
-        $respond.send_response(response, false)?.send_data(
-            bytes::Bytes::from(serde_json::to_vec(&$body).unwrap()),
-            true,
-        )?;
-
-        return Ok(());
-    };
-}
+pub static ARGON2: Lazy<argon2::Argon2> = Lazy::new(|| argon2::Argon2::default());
 
 #[macro_export]
 macro_rules! check_content_type {
-    ($request:ident, $respond:ident) => {
+    ($request:ident) => {
         match $request.headers().get(http::header::CONTENT_TYPE) {
             Some(val) => {
                 if val != "application/json" {
-                    send_response!(
-                        $respond,
-                        UNSUPPORTED_MEDIA_TYPE,
-                        Response::UNSUPPORTED_MEDIA_TYPE
-                    );
+                    return Ok(Response::unsupported_media_type());
                 }
             }
             None => {
-                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
+                return Ok(Response::bad_request());
             }
         }
     };
@@ -114,19 +124,19 @@ macro_rules! check_content_type {
 
 #[macro_export]
 macro_rules! body {
-    ($request:ident, $respond:ident, $type:ty) => {{
+    ($request:ident, $type:ty) => {{
         // the payload must be small enough to fit in one frame (don't do that in production)
         let body = match $request.body_mut().data().await {
             Some(body) => body?,
             None => {
-                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
+                return Ok(Response::bad_request());
             }
         };
 
         match serde_json::from_slice::<$type>(&body) {
             Ok(body) => body,
             Err(_) => {
-                send_response!($respond, BAD_REQUEST, Response::BAD_REQUEST);
+                return Ok(Response::bad_request());
             }
         }
     }};
@@ -134,17 +144,13 @@ macro_rules! body {
 
 #[macro_export]
 macro_rules! unwrap_internal_error {
-    ($respond:ident, $result:expr) => {
+    ($result:expr) => {
         match $result {
             Ok(value) => value,
             Err(e) => {
                 log::error!("{:?}", e);
 
-                send_response!(
-                    $respond,
-                    INTERNAL_SERVER_ERROR,
-                    Response::INTERNAL_SERVER_ERROR
-                );
+                return Ok(Response::internal_server_error());
             }
         }
     };
@@ -152,17 +158,34 @@ macro_rules! unwrap_internal_error {
 
 #[macro_export]
 macro_rules! check_auth_token {
-    ($request:ident, $respond:ident) => {{
+    ($request:ident) => {{
         match $request.headers().get(http::header::AUTHORIZATION) {
             Some(token) => match auth::decode_token(token.as_bytes()) {
                 Ok(session_id) => session_id,
                 Err(_) => {
-                    send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
+                    return Ok(Response::unauthorized());
                 }
             },
             None => {
-                send_response!($respond, UNAUTHORIZED, Response::UNAUTHORIZED);
+                return Ok(Response::unauthorized());
             }
         }
     }};
+}
+
+#[macro_export]
+macro_rules! parse_path_var {
+    ($request:ident, $ty:ty) => {
+        match $request.uri().path().rsplit_once("/") {
+            Some((_, val)) => match val.parse::<$ty>() {
+                Ok(val) => val,
+                Err(_) => {
+                    return Ok(Response::bad_request());
+                }
+            },
+            None => {
+                unreachable!()
+            }
+        }
+    };
 }

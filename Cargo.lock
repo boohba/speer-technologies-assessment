@@ -47,6 +47,7 @@ dependencies = [
  "log",
  "num_cpus",
  "once_cell",
+ "regex",
  "reqwest",
  "rustls",
  "serde",
