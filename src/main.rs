@@ -136,6 +136,11 @@ async fn handle_request(mut request: Request, mut respond: Respond, database: Da
             http::Method::POST => call!(routes::users::post),
             _ => error!(METHOD_NOT_ALLOWED),
         },
+        "/users/@me/liked_tweets" => match *request.method() {
+            http::Method::POST => call!(routes::users::liked_tweets::post),
+            http::Method::DELETE => call!(routes::users::liked_tweets::delete),
+            _ => error!(METHOD_NOT_ALLOWED),
+        },
         "/sessions" => match *request.method() {
             http::Method::POST => call!(routes::sessions::post),
             _ => error!(METHOD_NOT_ALLOWED),

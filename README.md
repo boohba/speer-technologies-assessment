@@ -86,6 +86,82 @@ curl -k -X POST 'https://localhost:8443/users' \
 }
 ```
 
+## POST /users/@me/liked_tweets
+
+#### Payload:
+
+| Field    | Type   | Required | Description                                                                 |
+|----------|--------|----------|-----------------------------------------------------------------------------|
+| id       | number | yes      | The tweet ID.                                                               |
+
+The `result` field is always `null`.
+
+**Requires authorization*
+
+### Examples
+
+```bash
+curl -k -X POST 'https://localhost:8443/users/@me/liked_tweets' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: your_token' \
+  -d '{"id":1}'
+```
+
+**201 Created**
+
+```json
+{
+  "error": false
+}
+```
+
+**409 Conflict**
+
+```json
+{
+  "error": true,
+  "message": "Tweet already liked"
+}
+```
+
+## DELETE /users/@me/liked_tweets
+
+#### Payload:
+
+| Field    | Type   | Required | Description                                                                 |
+|----------|--------|----------|-----------------------------------------------------------------------------|
+| id       | number | yes      | The tweet ID.                                                               |
+
+The `result` field is always `null`.
+
+**Requires authorization*
+
+### Examples
+
+```bash
+curl -k -X DELETE 'https://localhost:8443/users/@me/liked_tweets' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: your_token' \
+  -d '{"id":1}'
+```
+
+**200 OK**
+
+```json
+{
+  "error": false
+}
+```
+
+**404 Not Found**
+
+```json
+{
+  "error": true,
+  "message": "Not Found"
+}
+```
+
 ## POST /sessions
 
 #### Payload:
@@ -191,6 +267,7 @@ curl -k -X GET 'https://localhost:8443/tweets?offset=0&limit=50' \
     {
       "id": 1,
       "text": "Hello, World!",
+      "like_count": 10,
       "time_created": 1669185715
     }
   ]

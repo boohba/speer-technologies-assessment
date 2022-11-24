@@ -53,7 +53,7 @@ pub async fn get(
 
     // making an index on tweets.user_id and/or tweets.time_created will not necessarily improve
     // performance, or at the very least, will be a preemptive optimization.
-    let result = sqlx::query("SELECT id, text, time_created FROM tweets WHERE user_id = (SELECT user_id FROM sessions WHERE id = $1) ORDER BY time_created DESC LIMIT $2 OFFSET $3")
+    let result = sqlx::query("SELECT id, text, like_count, time_created FROM tweets WHERE user_id = (SELECT user_id FROM sessions WHERE id = $1) ORDER BY time_created DESC LIMIT $2 OFFSET $3")
         .bind(session_id)
         .bind(limit)
         .bind(offset)
@@ -64,18 +64,27 @@ pub async fn get(
     struct Tweet {
         id: i64,
         text: String,
+        like_count: i32,
         time_created: i64,
+    }
+
+    impl Tweet {
+        #[inline(always)]
+        fn from(row: sqlx::postgres::PgRow) -> Self {
+            Self {
+                id: row.get_unchecked(0),
+                text: row.get_unchecked(1),
+                like_count: row.get_unchecked(2),
+                time_created: row.get_unchecked(3),
+            }
+        }
     }
 
     use sqlx::Row;
 
     let response = unwrap_internal_error!(respond, result)
         .into_iter()
-        .map(|row| Tweet {
-            id: row.get_unchecked(0),
-            text: row.get_unchecked(1),
-            time_created: row.get_unchecked(2),
-        })
+        .map(|row| Tweet::from(row))
         .collect::<Vec<Tweet>>();
 
     send_response!(respond, OK, Response::success(response));
