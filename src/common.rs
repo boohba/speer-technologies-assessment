@@ -46,10 +46,6 @@ impl Response<()> {
     }
 }
 
-pub type Request = http::Request<h2::RecvStream>;
-pub type Respond = h2::server::SendResponse<bytes::Bytes>;
-pub type Database = sqlx::Pool<sqlx::postgres::Postgres>;
-
 #[derive(serde::Deserialize)]
 pub struct Credentials {
     pub username: String,
@@ -65,6 +61,15 @@ impl Credentials {
             || self.password.len() > 128
     }
 }
+
+#[derive(serde::Deserialize)]
+pub struct TweetId {
+    pub id: i64,
+}
+
+pub type Request = http::Request<h2::RecvStream>;
+pub type Respond = h2::server::SendResponse<bytes::Bytes>;
+pub type Database = sqlx::Pool<sqlx::postgres::Postgres>;
 
 pub static ARGON2: once_cell::sync::Lazy<argon2::Argon2> =
     once_cell::sync::Lazy::new(|| argon2::Argon2::default());
