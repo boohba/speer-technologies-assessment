@@ -64,7 +64,7 @@ Create a user.
 
 On success, the `result` field will contain a [User](#user) object.
 
-##### Examples
+#### Examples
 
 ```bash
 curl -k -X POST 'https://localhost:8443/users/@me/users' \
@@ -106,7 +106,7 @@ Create a session.
 
 On success, the `result` field will contain a `string` authorization token.
 
-##### Examples
+#### Examples
 
 ```bash
 curl -k -X POST 'https://localhost:8443/users/@me/sessions' \
