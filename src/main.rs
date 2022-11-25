@@ -24,9 +24,8 @@ async fn main() {
         tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config))
     };
 
-    let database_address = std::env::var("DATABASE_ADDRESS").unwrap_or(String::from(
-        "postgres://postgres:postgres@localhost/postgres",
-    ));
+    let database_address = std::env::var("DATABASE_ADDRESS")
+        .unwrap_or("postgres://postgres:postgres@localhost/postgres".to_string());
 
     // https://wiki.postgresql.org/wiki/Number_Of_Database_Connections
     let database = sqlx::postgres::PgPoolOptions::new()
@@ -104,58 +103,71 @@ async fn handle_connection(
 }
 
 async fn handle_request(mut request: Request, mut respond: Respond, database: Database) {
-    macro_rules! error {
-        ($code:ident) => {{
-            let response = http::Response::builder()
-                .status(http::status::StatusCode::$code)
-                .header(http::header::CONTENT_TYPE, "application/json")
-                .body(())
-                .unwrap();
-
-            match respond.send_response(response, false) {
-                Ok(mut send) => {
-                    let response = Response::failure(
-                        http::status::StatusCode::$code.canonical_reason().unwrap(),
-                    );
-                    let response = bytes::Bytes::from(serde_json::to_vec(&response).unwrap());
-                    send.send_data(response, true)
-                }
-                Err(e) => Err(e),
-            }
-        }};
-    }
-
     macro_rules! call {
         ($handler:path) => {
-            $handler(&mut request, &mut respond, database).await
+            $handler(&mut request, database).await
         };
     }
 
     let result = match request.uri().path() {
         "/users" => match *request.method() {
             http::Method::POST => call!(routes::users::post),
-            _ => error!(METHOD_NOT_ALLOWED),
+            _ => Ok(Response::method_not_allowed()),
+        },
+        "/users/@me/sessions" => match *request.method() {
+            http::Method::POST => call!(routes::users::sessions::post),
+            _ => Ok(Response::method_not_allowed()),
+        },
+        "/users/@me/tweets" => match *request.method() {
+            http::Method::POST => call!(routes::users::tweets::post),
+            http::Method::GET => call!(routes::users::tweets::get),
+            _ => Ok(Response::method_not_allowed()),
         },
         "/users/@me/liked_tweets" => match *request.method() {
             http::Method::POST => call!(routes::users::liked_tweets::post),
             http::Method::DELETE => call!(routes::users::liked_tweets::delete),
-            _ => error!(METHOD_NOT_ALLOWED),
+            _ => Ok(Response::method_not_allowed()),
         },
-        "/sessions" => match *request.method() {
-            http::Method::POST => call!(routes::sessions::post),
-            _ => error!(METHOD_NOT_ALLOWED),
-        },
-        "/tweets" => match *request.method() {
-            http::Method::GET => call!(routes::tweets::get),
-            http::Method::POST => call!(routes::tweets::post),
-            http::Method::PATCH => call!(routes::tweets::patch),
-            http::Method::DELETE => call!(routes::tweets::delete),
-            _ => error!(METHOD_NOT_ALLOWED),
-        },
-        _ => error!(NOT_FOUND),
+        path => {
+            use once_cell::sync::Lazy;
+            use regex::Regex;
+
+            static REGEX: Lazy<Regex> =
+                Lazy::new(|| Regex::new("^/users/@me/tweets/[0-9]{1,16}$").unwrap());
+
+            if REGEX.is_match(path) {
+                match *request.method() {
+                    http::Method::PATCH => call!(routes::users::tweets::patch),
+                    http::Method::DELETE => call!(routes::users::tweets::delete),
+                    _ => Ok(Response::method_not_allowed()),
+                }
+            } else {
+                Ok(Response::not_found())
+            }
+        }
     };
 
-    if let Err(e) = result {
-        log::warn!("Failed to handle HTTP/2 request: {}", e);
+    match result {
+        Ok((code, body)) => {
+            let response = http::Response::builder()
+                .status(code)
+                .header(http::header::CONTENT_TYPE, "application/json")
+                .body(())
+                .unwrap();
+
+            match respond.send_response(response, false) {
+                Ok(mut send) => {
+                    if let Err(e) = send.send_data(body, true) {
+                        log::warn!("Failed to send HTTP/2 data frame: {}", e);
+                    }
+                }
+                Err(e) => {
+                    log::warn!("Failed to send HTTP/2 response: {}", e);
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to handle HTTP/2 request: {}", e);
+        }
     }
 }
