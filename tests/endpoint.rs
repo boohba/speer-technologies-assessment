@@ -1,15 +1,29 @@
 #![rustfmt::skip]
 #![feature(custom_inner_attributes)]
 
+use std::time::UNIX_EPOCH;
+use http::{header, StatusCode};
 use once_cell::sync::{Lazy, OnceCell};
+use reqwest::RequestBuilder;
+use serde::de::DeserializeOwned;
+use serde_json::json;
 
 #[tokio::test(flavor = "current_thread")]
 async fn main() {
-    test_404().await;
-    test_users().await;
-    test_sessions().await;
-    test_tweets().await;
-    test_users_liked_tweets().await;
+    macro_rules! run {
+        ($ident:ident) => {
+            $ident().await;
+        };
+    }
+
+    run!(test_404);
+    run!(test_405);
+    run!(test_create_user);
+    run!(test_create_session);
+    run!(test_create_tweet);
+    run!(test_get_tweets);
+    run!(test_edit_tweet);
+    run!(test_delete_tweet);
 }
 
 static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
@@ -21,226 +35,22 @@ static CLIENT: Lazy<reqwest::Client> = Lazy::new(|| {
 
 static TOKEN: OnceCell<String> = OnceCell::new();
 
-// might not be the most readable way to write tests but it works really well in a time-constrained environment
-macro_rules! test {
-    ($method:ident, $url:expr, $status:ident, $response:literal, $body:literal $(, $key:ident: $value:expr)*) => {
-        let response = CLIENT.$method($url)
-            $(.header(reqwest::header::$key, $value))*
-            .body($body)
-            .send()
-            .await
-            .unwrap();
+const SERVER: &str = "https://localhost:8443";
 
-        assert_eq!(response.status(), reqwest::StatusCode::$status);
-
-        let body = response.bytes().await.unwrap();
-
-        assert_eq!($response, std::str::from_utf8(&body).unwrap());
-    };
-}
-
-async fn test_404() {
-    println!("test_404");
-
-    const URL: &str = "https://localhost:8443";
-
-    test!(get, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, "");
-}
-
-async fn test_users() {
-    println!("test_users");
-
-    const URL: &str = "https://localhost:8443/users";
-
-    test!(get, URL, METHOD_NOT_ALLOWED, r#"{"error":true,"message":"Method Not Allowed"}"#, "");
-
-    test_users_post().await;
-}
-
-async fn test_users_liked_tweets() {
-    println!("test_users_liked_tweets");
-
-    const URL: &str = "https://localhost:8443/users/@me/liked_tweets";
-
-    test!(get, URL, METHOD_NOT_ALLOWED, r#"{"error":true,"message":"Method Not Allowed"}"#, "");
-
-    test_users_liked_tweets_post().await;
-    test_users_liked_tweets_delete().await;
-}
-
-async fn test_users_liked_tweets_post() {
-    println!("test_users_liked_tweets_post");
-
-    const URL: &str = "https://localhost:8443/users/@me/liked_tweets";
-
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(post, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(post, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "", CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, r#"{"id":1}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, CREATED, r#"{"error":false}"#, r#"{"id":2}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, CONFLICT, r#"{"error":true,"message":"Tweet already liked"}"#, r#"{"id":2}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-
-    assert_eq!(get_tweets().await.result[0].like_count, 1);
-}
-
-async fn test_users_liked_tweets_delete() {
-    println!("test_users_liked_tweets_delete");
-
-    const URL: &str = "https://localhost:8443/users/@me/liked_tweets";
-
-    test!(delete, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(delete, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(delete, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json");
-    test!(delete, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "", CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(delete, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, r#"{"id":1}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(delete, URL, OK, r#"{"error":false}"#, r#"{"id":2}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-
-    assert_eq!(get_tweets().await.result[0].like_count, 0);
-}
-
-async fn test_users_post() {
-    println!("test_users_post");
-
-    const URL: &str = "https://localhost:8443/users";
-
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(post, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "aaa", CONTENT_TYPE: "application/json");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"username":"aa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"username":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, CREATED, r#"{"error":false,"result":1}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, CONFLICT, r#"{"error":true,"message":"Username already exists"}"#, r#"{"username":"hello","password":"world"}"#, CONTENT_TYPE: "application/json");
-}
-
-async fn test_sessions() {
-    println!("test_sessions");
-
-    const URL: &str = "https://localhost:8443/sessions";
-
-    test!(get, URL, METHOD_NOT_ALLOWED, r#"{"error":true,"message":"Method Not Allowed"}"#, "");
-
-    test_sessions_post().await;
-}
-
-async fn test_sessions_post() {
-    println!("test_sessions_post");
-
-    const URL: &str = "https://localhost:8443/sessions";
-
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(post, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "aaa", CONTENT_TYPE: "application/json");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"username":"aa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"username":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","password":"aaa"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, r#"{"username":"foo","password":"bar"}"#, CONTENT_TYPE: "application/json");
-    test!(post, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, r#"{"username":"hello","password":"bar"}"#, CONTENT_TYPE: "application/json");
-
-    let response = CLIENT
-        .post(URL)
-        .body(r#"{"username":"hello","password":"world"}"#)
-        .header(http::header::CONTENT_TYPE, "application/json")
-        .send()
-        .await
-        .unwrap();
-
-    assert_eq!(response.status(), reqwest::StatusCode::CREATED);
-
-    let response = serde_json::from_slice::<Response<String>>(&response.bytes().await.unwrap()).unwrap();
-
-    assert_eq!(response.error, false);
-
-    TOKEN.set(response.result).unwrap();
-}
-
-async fn test_tweets() {
-    println!("test_tweets");
-
-    const URL: &str = "https://localhost:8443/tweets";
-
-    test!(put, URL, METHOD_NOT_ALLOWED, r#"{"error":true,"message":"Method Not Allowed"}"#, "");
-
-    test_tweets_post().await;
-    test_tweets_get().await;
-    test_tweets_patch().await;
-    test_tweets_delete().await;
-}
-
-async fn test_tweets_post() {
-    println!("test_tweets_post");
-
-    const URL: &str = "https://localhost:8443/tweets";
-
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(post, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(post, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json");
-    test!(post, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json", AUTHORIZATION: ">w<");
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "aaa", CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"text":""}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"text":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, CREATED, r#"{"error":false,"result":1}"#, r#"{"text":"hello"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(post, URL, CREATED, r#"{"error":false,"result":2}"#, r#"{"text":"hello"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-}
-
-async fn test_tweets_get() {
-    println!("test_tweets_get");
-
-    const URL: &str = "https://localhost:8443/tweets";
-
-    test!(get, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "");
-    test!(get, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", AUTHORIZATION: ">w<");
-    test!(get, format!("{}?limit=unlimited", URL), BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(get, format!("{}?offset=-69", URL), BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(get, format!("{}?limit=0", URL), OK, r#"{"error":false,"result":[]}"#, "", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(get, format!("{}?offset=2", URL), OK, r#"{"error":false,"result":[]}"#, "", AUTHORIZATION: TOKEN.get().unwrap());
-
-    let response = get_tweets().await;
-
-    assert_eq!(response.error, false);
-    assert_eq!(response.result.len(), 2);
-
-    for tweet in response.result {
-        assert_eq!(tweet.text, "hello");
-        assert_eq!(tweet.like_count, 0);
-    }
-}
-
-async fn test_tweets_patch() {
-    println!("test_tweets_patch");
-
-    const URL: &str = "https://localhost:8443/tweets";
-
-    test!(patch, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(patch, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(patch, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json");
-    test!(patch, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json", AUTHORIZATION: ">w<");
-    test!(patch, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, r#"{"id":-1,"text":"hi"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(patch, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"id":-1,"text":""}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(patch, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"id":-1,"text":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(patch, URL, OK, r#"{"error":false}"#, r#"{"id":1,"text":"hi"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-}
-
-async fn test_tweets_delete() {
-    println!("test_tweets_delete");
-
-    const URL: &str = "https://localhost:8443/tweets";
-
-    test!(delete, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, "");
-    test!(delete, URL, UNSUPPORTED_MEDIA_TYPE, r#"{"error":true,"message":"Unsupported Media Type"}"#, "", CONTENT_TYPE: "application/x-www-form-urlencoded");
-    test!(delete, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json");
-    test!(delete, URL, UNAUTHORIZED, r#"{"error":true,"message":"Unauthorized"}"#, "", CONTENT_TYPE: "application/json", AUTHORIZATION: ">w<");
-    test!(delete, URL, NOT_FOUND, r#"{"error":true,"message":"Not Found"}"#, r#"{"id":-1}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(delete, URL, BAD_REQUEST, r#"{"error":true,"message":"Bad Request"}"#, r#"{"text":"123"}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-    test!(delete, URL, OK, r#"{"error":false}"#, r#"{"id":1}"#, CONTENT_TYPE: "application/json", AUTHORIZATION: TOKEN.get().unwrap());
-}
-
-#[derive(serde::Deserialize)]
+#[derive(Eq, PartialEq, serde::Deserialize)]
 struct Response<T> {
     error: bool,
-    result: T,
+    message: Option<String>,
+    result: Option<T>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Eq, PartialEq, serde::Deserialize)]
+struct User {
+    id: i64,
+    username: String,
+}
+
+#[derive(Eq, PartialEq, serde::Deserialize)]
 struct Tweet {
     id: i64,
     text: String,
@@ -248,16 +58,250 @@ struct Tweet {
     time_created: i64,
 }
 
-async fn get_tweets() -> Response<Vec<Tweet>> {
-    let response = CLIENT
-        .get("https://localhost:8443/tweets")
-        .header(http::header::AUTHORIZATION, TOKEN.get().unwrap())
+async fn test_404() {
+    println!("test_404");
+
+    let response = CLIENT.put(format!("{}/something", SERVER))
+        .send().await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+async fn test_405() {
+    println!("test_405");
+
+    let response = CLIENT.put(format!("{}/users", SERVER))
+        .send().await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+async fn assert_success<T: DeserializeOwned>(status: StatusCode, mut request: RequestBuilder) -> T {
+    if let Some(token) = TOKEN.get() {
+        request = request.header(header::AUTHORIZATION, token);
+    }
+
+    let response = request.send().await.unwrap();
+
+    assert_eq!(response.status(), status);
+
+    let response = response.json::<Response<T>>().await.unwrap();
+
+    assert_eq!(response.error, false);
+
+    response.result.unwrap()
+}
+
+async fn assert_error<T: DeserializeOwned>(status: StatusCode, mut request: RequestBuilder) {
+    if let Some(token) = TOKEN.get() {
+        request = request.header(header::AUTHORIZATION, token);
+    }
+
+    let response = request
         .send()
         .await
         .unwrap();
 
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(response.status(), status);
 
-    serde_json::from_slice(&response.bytes().await.unwrap()).unwrap()
+    let response = response.json::<Response<T>>().await.unwrap();
+
+    assert_eq!(response.error, true);
+    assert!(matches!(response.message, Some(..)));
+    assert!(matches!(response.result, None));
 }
 
+async fn assert_unauthorized(request: RequestBuilder) {
+    let response = request
+        .header(header::CONTENT_TYPE, "application/json")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED)
+}
+
+macro_rules! boilerplate {
+    ($url:ident, $ty:ty) => {
+        assert_error::<$ty>(StatusCode::UNSUPPORTED_MEDIA_TYPE, CLIENT.post($url)
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")).await;
+
+        assert_error::<$ty>(StatusCode::BAD_REQUEST, CLIENT.post($url)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body("aaa")).await;
+    }
+}
+
+async fn test_create_user() {
+    println!("test_create_user");
+
+    let url = &format!("{}/users", SERVER);
+
+    boilerplate!(url, User);
+
+    assert_error::<User>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "username": "a", "password": "a" }))).await;
+
+    assert_error::<User>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "username": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }))).await;
+
+    let response = assert_success::<User>(StatusCode::CREATED, CLIENT.post(url)
+        .json(&json!({ "username": "hello", "password": "world" }))).await;
+
+    assert_eq!(response.username, "hello");
+
+    assert_error::<User>(StatusCode::CONFLICT, CLIENT.post(url)
+        .json(&json!({ "username": "hello", "password": "world" }))).await;
+}
+
+async fn test_create_session() {
+    println!("test_create_session");
+
+    let url = &format!("{}/users/@me/sessions", SERVER);
+
+    boilerplate!(url, String);
+
+    assert_error::<String>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "username": "a", "password": "a" }))).await;
+
+    assert_error::<String>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "username": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "password": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }))).await;
+
+    assert_error::<String>(StatusCode::NOT_FOUND, CLIENT.post(url)
+        .json(&json!({ "username": "hi", "password": "world" }))).await;
+
+    assert_error::<String>(StatusCode::UNAUTHORIZED, CLIENT.post(url)
+        .json(&json!({ "username": "hello", "password": "wowld" }))).await;
+
+    let response = assert_success::<String>(StatusCode::CREATED, CLIENT.post(url)
+        .json(&json!({ "username": "hello", "password": "world" }))).await;
+
+    assert!(response.len() > 60);
+
+    TOKEN.set(response).unwrap();
+}
+
+async fn test_create_tweet() {
+    println!("test_create_tweet");
+
+    let url = &format!("{}/users/@me/tweets", SERVER);
+
+    boilerplate!(url, Tweet);
+
+    assert_unauthorized(CLIENT.post(url)).await;
+
+    assert_error::<Tweet>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "text": "" }))).await;
+
+    assert_error::<Tweet>(StatusCode::BAD_REQUEST, CLIENT.post(url)
+        .json(&json!({ "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }))).await;
+
+    let now = UNIX_EPOCH.elapsed().unwrap().as_secs() as i64;
+
+    for id in 1..3 {
+        let response = assert_success::<Tweet>(StatusCode::CREATED, CLIENT.post(url)
+            .json(&json!({ "text": "hello" }))).await;
+
+        assert_eq!(response.id, id);
+        assert_eq!(response.text, "hello");
+        assert_eq!(response.like_count, 0);
+        assert!(response.time_created > now);
+    }
+}
+
+async fn test_get_tweets() {
+    println!("test_get_tweets");
+
+    let url = &format!("{}/users/@me/tweets", SERVER);
+
+    assert_unauthorized(CLIENT.get(url)).await;
+
+    assert_error::<Vec<Tweet>>(StatusCode::BAD_REQUEST, CLIENT.get(url)
+        .query(&[("limit", "500"), ("offset", "-1")]))
+        .await;
+
+    for limit in 0..2 {
+        let response = assert_success::<Vec<Tweet>>(StatusCode::OK, CLIENT.get(url)
+            .query(&[("limit", limit.to_string())]))
+            .await;
+
+        assert_eq!(response.len(), 2 - limit);
+    }
+
+    for offset in 0..2 {
+        let response = assert_success::<Vec<Tweet>>(StatusCode::OK, CLIENT.get(url)
+            .query(&[("limit", "1"), ("offset", &offset.to_string())]))
+            .await;
+
+        assert_eq!(response.len(), 1);
+        assert_eq!(response[0].id, offset + 1);
+    }
+}
+
+async fn test_edit_tweet() {
+    println!("test_edit_tweet");
+
+    let url = &format!("{}/users/@me/tweets/1", SERVER);
+
+    boilerplate!(url, Tweet);
+
+    assert_unauthorized(CLIENT.patch(url)).await;
+
+    assert_error::<Tweet>(StatusCode::BAD_REQUEST, CLIENT.patch(url)
+        .json(&json!({ "text": "" }))).await;
+
+    assert_error::<Tweet>(StatusCode::BAD_REQUEST, CLIENT.patch(url)
+        .json(&json!({ "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }))).await;
+
+    let response = assert_success::<Tweet>(StatusCode::OK, CLIENT.patch(url)
+        .json(&json!({ "text": "Hello, World!" }))).await;
+
+    assert_eq!(response.id, 1);
+    assert_eq!(response.text, "Hello, World!");
+}
+
+async fn test_delete_tweet() {
+    println!("test_delete_tweet");
+
+    let url = &format!("{}/users/@me/tweets/1", SERVER);
+
+    assert_unauthorized(CLIENT.delete(url)).await;
+    assert_success::<()>(StatusCode::NO_CONTENT, CLIENT.delete(url)).await;
+    assert_error::<()>(StatusCode::NOT_FOUND, CLIENT.delete(url)).await;
+}
+
+async fn test_like_tweet() {
+    println!("test_like_tweet");
+
+    let url = &format!("{}/users/@me/liked_tweets", SERVER);
+
+    boilerplate!(url, ());
+
+    assert_error::<()>(StatusCode::NOT_FOUND, CLIENT.post(url)
+        .json(&json!({ "tweet_id": 1 }))).await;
+
+    assert_success::<()>(StatusCode::CREATED, CLIENT.post(url)
+        .json(&json!({ "tweet_id": 2 }))).await;
+
+    let response = assert_success::<Vec<Tweet>>(StatusCode::OK, CLIENT.get(format!("{}/users/@me/tweets", SERVER))).await;
+    assert_eq!(response.len(), 1);
+    assert_eq!(response[0].like_count, 1);
+}
+
+async fn test_unlike_tweet() {
+    println!("test_unlike_tweet");
+
+    let url = &format!("{}/users/@me/liked_tweets", SERVER);
+
+    boilerplate!(url, ());
+
+    assert_error::<()>(StatusCode::NOT_FOUND, CLIENT.delete(url)
+        .json(&json!({ "tweet_id": 1 }))).await;
+
+    assert_success::<()>(StatusCode::CREATED, CLIENT.delete(url)
+        .json(&json!({ "tweet_id": 2 }))).await;
+
+    let response = assert_success::<Vec<Tweet>>(StatusCode::OK, CLIENT.get(format!("{}/users/@me/tweets", SERVER))).await;
+    assert_eq!(response.len(), 1);
+    assert_eq!(response[0].like_count, 0);
+}
