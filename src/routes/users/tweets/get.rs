@@ -47,8 +47,6 @@ pub async fn get(request: &mut Request, database: Database) -> Result {
         return Ok(Response::bad_request());
     }
 
-    // making an index on tweets.user_id and/or tweets.time_created will not necessarily improve
-    // performance, or at the very least, will be a preemptive optimization.
     let result = sqlx::query("SELECT id, text, like_count, time_created FROM tweets WHERE user_id = (SELECT user_id FROM sessions WHERE id = $1) ORDER BY time_created DESC LIMIT $2 OFFSET $3")
         .bind(session_id)
         .bind(limit)

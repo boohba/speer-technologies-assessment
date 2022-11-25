@@ -27,6 +27,8 @@ CREATE TABLE tweets
     time_created BIGINT  NOT NULL DEFAULT extract(EPOCH FROM now())
 );
 
+CREATE INDEX tweets_user_id_index ON tweets(user_id);
+
 CREATE TABLE user_liked_tweets
 (
     user_id  BIGINT NOT NULL REFERENCES users (id) ON DELETE CASCADE,
