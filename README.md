@@ -67,7 +67,7 @@ On success, the `result` field will contain a [User](#user) object.
 #### Examples
 
 ```bash
-curl -k -X POST 'https://localhost:8443/users/@me/users' \
+curl -k -X POST 'https://localhost:8443/users' \
   -H 'Content-Type: application/json' \
   -d '{"username":"hello","password":"world"}'
 ```
@@ -323,7 +323,7 @@ The `result` field is always `null`.
 curl -k -X POST 'https://localhost:8443/users/@me/liked_tweets' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: your_token' \
-  -d '{"id":1}'
+  -d '{"tweet_id":1}'
 ```
 
 **201 Created**
@@ -363,7 +363,7 @@ The `result` field is always `null`.
 curl -k -X DELETE 'https://localhost:8443/users/@me/liked_tweets' \
   -H 'Content-Type: application/json' \
   -H 'Authorization: your_token' \
-  -d '{"id":1}'
+  -d '{"tweet_id":1}'
 ```
 
 **200 OK**
