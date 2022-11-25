@@ -14,5 +14,5 @@ pub async fn delete(request: &mut Request, database: Database) -> Result {
         return Ok(Response::not_found());
     }
 
-    Ok((StatusCode::OK, Response::success(())))
+    Ok((StatusCode::OK, Response::empty()))
 }

@@ -25,7 +25,7 @@ pub async fn post(request: &mut Request, database: Database) -> Result {
             if result.rows_affected() == 0 {
                 Ok((StatusCode::CONFLICT, Response::error("Tweet already liked")))
             } else {
-                Ok((StatusCode::CREATED, Response::success(())))
+                Ok((StatusCode::CREATED, Response::empty()))
             }
         }
         Err(e) => {

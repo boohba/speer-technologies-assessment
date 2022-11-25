@@ -21,6 +21,6 @@ pub async fn delete(request: &mut Request, database: Database) -> Result {
     if unwrap_internal_error!(result).rows_affected() == 0 {
         Ok(Response::not_found())
     } else {
-        Ok((StatusCode::OK, Response::success(())))
+        Ok((StatusCode::OK, Response::empty()))
     }
 }

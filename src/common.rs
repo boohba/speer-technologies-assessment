@@ -52,6 +52,9 @@ impl Response<()> {
         Self::new(true, Some(message), None)
     }
 
+    #[inline(always)]
+    pub fn empty() -> Bytes { Self::new(false, None, None) }
+
     error!(not_found, NOT_FOUND);
     error!(bad_request, BAD_REQUEST);
     error!(internal_server_error, INTERNAL_SERVER_ERROR);
