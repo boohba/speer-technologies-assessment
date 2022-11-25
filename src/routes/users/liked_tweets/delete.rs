@@ -12,7 +12,7 @@ pub async fn delete(request: &mut Request, database: Database) -> Result {
 
     let body = body!(request, Body);
 
-    let result = sqlx::query("DELETE FROM user_liked_tweets WHERE user_id = $1 AND tweet_id = $2")
+    let result = sqlx::query("DELETE FROM user_liked_tweets WHERE user_id = (SELECT user_id FROM sessions WHERE id = $1) AND tweet_id = $2")
         .bind(session_id)
         .bind(body.tweet_id)
         .execute(&database)

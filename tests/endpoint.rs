@@ -174,8 +174,12 @@ async fn test_create_session() {
     assert_error::<String>(StatusCode::NOT_FOUND, CLIENT.post(url)
         .json(&json!({ "username": "hello", "password": "wowld" }))).await;
 
-    let response = assert_success::<String>(StatusCode::CREATED, CLIENT.post(url)
-        .json(&json!({ "username": "hello", "password": "world" }))).await.unwrap();
+    let mut response = String::new();
+
+    for _ in 0..2 {
+        response = assert_success::<String>(StatusCode::CREATED, CLIENT.post(url)
+            .json(&json!({ "username": "hello", "password": "world" }))).await.unwrap();
+    }
 
     TOKEN.set(response).unwrap();
 }

@@ -12,13 +12,11 @@ pub async fn post(request: &mut Request, database: Database) -> Result {
 
     let body = body!(request, Body);
 
-    let result = sqlx::query(
-        "INSERT INTO user_liked_tweets (user_id, tweet_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
-    )
-    .bind(session_id)
-    .bind(body.tweet_id)
-    .execute(&database)
-    .await;
+    let result = sqlx::query("INSERT INTO user_liked_tweets (user_id, tweet_id) VALUES ((SELECT user_id FROM sessions WHERE id = $1), $2) ON CONFLICT DO NOTHING")
+        .bind(session_id)
+        .bind(body.tweet_id)
+        .execute(&database)
+        .await;
 
     match result {
         Ok(result) => {
