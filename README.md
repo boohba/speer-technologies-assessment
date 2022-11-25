@@ -286,7 +286,7 @@ curl -k -X DELETE 'https://localhost:8443/users/@me/tweets/1' \
   -H 'Authorization: your_token'
 ```
 
-**204 No Content**
+**200 OK**
 
 ```json
 {

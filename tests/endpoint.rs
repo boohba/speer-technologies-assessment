@@ -262,7 +262,7 @@ async fn test_delete_tweet() {
     let url = &format!("{}/users/@me/tweets/1", SERVER);
 
     assert_unauthorized(CLIENT.delete(url)).await;
-    assert_success::<()>(StatusCode::NO_CONTENT, CLIENT.delete(url)).await;
+    assert_success::<()>(StatusCode::OK, CLIENT.delete(url)).await;
     assert_error::<()>(StatusCode::NOT_FOUND, CLIENT.delete(url)).await;
 }
 
